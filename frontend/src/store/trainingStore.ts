@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import type {
   TrainingType, TrainingConfig, EpochMetric, RoundMetric,
-  ClientMetric, TrainingResults, ClientState, TrainingMessage
+  ClientMetric, TrainingResults, ClientState, TrainingMessage,
+  PartitionClientStat
 } from '../types/training'
 
 interface TrainingStore {
@@ -36,6 +37,14 @@ interface TrainingStore {
   // Training logs
   trainingLogs: Array<{ time: string; message: string; type: string }>
 
+  // Partition stats (sent once at FL start)
+  partitionStats: PartitionClientStat[]
+  partitionClasses: string[]
+
+  // Throughput & latency per round (derived from round_complete messages)
+  throughputHistory: Array<{ round: number; throughput_sps: number }>
+  latencyHistory: Array<{ round: number; round_time_ms: number; agg_time_ms: number; eval_time_ms: number; avg_client_train_ms: number; comm_latency_ms: number }>
+
   // Results
   centralizedResults: TrainingResults | null
   distributedResults: TrainingResults | null
@@ -68,6 +77,10 @@ const initialState = {
   clientStates: {},
   activeClientId: null,
   trainingLogs: [],
+  partitionStats: [] as PartitionClientStat[],
+  partitionClasses: [] as string[],
+  throughputHistory: [] as Array<{ round: number; throughput_sps: number }>,
+  latencyHistory: [] as Array<{ round: number; round_time_ms: number; agg_time_ms: number; eval_time_ms: number; avg_client_train_ms: number; comm_latency_ms: number }>,
   centralizedResults: null,
   distributedResults: null,
   federatedResults: null,
@@ -95,6 +108,10 @@ export const useTrainingStore = create<TrainingStore>((set, get) => ({
       clientHistory: {},
       clientStates: {},
       trainingLogs: [],
+      throughputHistory: [],
+      latencyHistory: [],
+      partitionStats: [],
+      partitionClasses: [],
       statusMessage: 'Starting...'
     })
     get().addLog(`Training started: ${config.type.toUpperCase()}`, 'round')
@@ -191,6 +208,14 @@ export const useTrainingStore = create<TrainingStore>((set, get) => ({
         addLog(`[Aggregation] FedAvg → Global model update`, 'agg')
         break
 
+      case 'partition_info':
+        set({
+          partitionStats: msg.partition_stats,
+          partitionClasses: msg.classes,
+        })
+        addLog(`[Partition] Dataset split across ${msg.n_clients} clients (${msg.n_classes} classes)`, 'client')
+        break
+
       case 'round_complete':
         set(state => ({
           currentRound: msg.round,
@@ -208,13 +233,35 @@ export const useTrainingStore = create<TrainingStore>((set, get) => ({
             client_metrics: msg.client_metrics,
             confusion_matrix: msg.confusion_matrix,
             communication_cost_kb: msg.communication_cost_kb,
-            n_clients_participated: msg.client_metrics?.length || 0
+            n_clients_participated: msg.client_metrics?.length || 0,
+            round_time_ms: msg.round_time_ms,
+            agg_time_ms: msg.agg_time_ms,
+            eval_time_ms: msg.eval_time_ms,
+            avg_client_train_ms: msg.avg_client_train_ms,
+            comm_latency_ms: msg.comm_latency_ms,
+            throughput_sps: msg.throughput_sps,
+            client_throughputs: msg.client_throughputs,
           }],
+          throughputHistory: msg.throughput_sps !== undefined
+            ? [...state.throughputHistory, { round: msg.round, throughput_sps: msg.throughput_sps }]
+            : state.throughputHistory,
+          latencyHistory: msg.round_time_ms !== undefined
+            ? [...state.latencyHistory, {
+                round: msg.round,
+                round_time_ms: msg.round_time_ms ?? 0,
+                agg_time_ms: msg.agg_time_ms ?? 0,
+                eval_time_ms: msg.eval_time_ms ?? 0,
+                avg_client_train_ms: msg.avg_client_train_ms ?? 0,
+                comm_latency_ms: msg.comm_latency_ms ?? 0,
+              }]
+            : state.latencyHistory,
           clientStates: Object.fromEntries(
             Object.keys(state.clientStates).map(k => [k, 'done' as ClientState])
           )
         }))
         addLog(`[Evaluation] Accuracy: ${(msg.accuracy * 100).toFixed(1)}% | F1: ${msg.f1_score.toFixed(3)} | Loss: ${msg.loss.toFixed(4)}`, 'eval')
+        if (msg.throughput_sps !== undefined)
+          addLog(`[Perf] Throughput: ${msg.throughput_sps.toFixed(0)} sps | Round: ${(msg.round_time_ms ?? 0).toFixed(0)}ms | Agg: ${(msg.agg_time_ms ?? 0).toFixed(0)}ms`, 'agg')
         break
 
       case 'worker_update':

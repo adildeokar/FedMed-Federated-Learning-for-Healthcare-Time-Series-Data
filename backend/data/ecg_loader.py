@@ -70,6 +70,33 @@ def generate_synthetic_ecg_dataset(n_samples=5000, n_classes=5, random_state=42)
     return X[idx], y[idx]
 
 
+def _mitbih_csv_dir_candidates():
+    """Directories to check for mitbih_train.csv / mitbih_test.csv (backend cwd–agnostic)."""
+    env_dir = os.environ.get("MITBIH_DATA_DIR", "").strip()
+    if env_dir:
+        yield os.path.abspath(env_dir)
+    here = os.path.dirname(os.path.abspath(__file__))
+    backend_root = os.path.dirname(here)
+    project_root = os.path.dirname(backend_root)
+    for root in (
+        os.path.join(here, "mitbih"),
+        os.path.join(backend_root, "data", "mitbih"),
+        os.path.join(project_root, "data", "mitbih"),
+        project_root,
+    ):
+        yield root
+
+
+def discover_mitbih_data_dir():
+    """Return first directory containing both MIT-BIH CSVs, or None."""
+    for root in _mitbih_csv_dir_candidates():
+        train_p = os.path.join(root, "mitbih_train.csv")
+        test_p = os.path.join(root, "mitbih_test.csv")
+        if os.path.isfile(train_p) and os.path.isfile(test_p):
+            return root
+    return None
+
+
 def load_real_mitbih(data_path):
     """Load real MIT-BIH dataset from pre-processed CSV files"""
     try:
@@ -86,10 +113,16 @@ def load_real_mitbih(data_path):
             X_train, y_train, test_size=0.1, stratify=y_train, random_state=42
         )
 
+        scaler = StandardScaler()
+        X_train = scaler.fit_transform(X_train).astype(np.float32)
+        X_val = scaler.transform(X_val).astype(np.float32)
+        X_test = scaler.transform(X_test).astype(np.float32)
+
         return {
             'X_train': X_train, 'y_train': y_train,
             'X_val': X_val, 'y_val': y_val,
             'X_test': X_test, 'y_test': y_test,
+            'scaler': scaler,
             'classes': ECG_CLASS_LABELS,
             'class_names': ECG_CLASSES,
             'n_classes': 5,
@@ -100,14 +133,30 @@ def load_real_mitbih(data_path):
         return None
 
 
-def load_ecg_dataset(use_real=False, data_path='data/mitbih'):
-    """Load ECG dataset - real or synthetic"""
-    if use_real and os.path.exists(data_path):
-        result = load_real_mitbih(data_path)
+def load_ecg_dataset(use_real=None, data_path=None):
+    """
+    Load ECG dataset — real MIT-BIH CSVs when available, else synthetic.
+
+    use_real: None = auto (prefer CSVs if found), True = require real path (discover or data_path),
+              False = always synthetic.
+    data_path: folder containing mitbih_train.csv and mitbih_test.csv (optional).
+    """
+    if use_real is False:
+        print("[ECG] Using synthetic ECG dataset (demo mode, use_real=False)")
+        X, y = generate_synthetic_ecg_dataset(n_samples=6000)
+        return split_and_scale(X, y)
+
+    path = data_path or discover_mitbih_data_dir()
+    if path:
+        result = load_real_mitbih(path)
         if result is not None:
+            print(f"[ECG] Loaded real MIT-BIH from {path}")
             return result
 
-    print("[ECG] Using synthetic ECG dataset (demo mode)")
+    if use_real is True:
+        print("[ECG] Real MIT-BIH requested but CSVs missing or invalid; using synthetic fallback")
+    else:
+        print("[ECG] MIT-BIH CSVs not found; using synthetic ECG (demo mode)")
     X, y = generate_synthetic_ecg_dataset(n_samples=6000)
     return split_and_scale(X, y)
 

@@ -7,14 +7,14 @@ from data.har_loader import load_har_dataset
 _cache = {}
 
 
-def get_dataset(dataset_type: str, use_real: bool = False):
-    """Get dataset with caching"""
+def get_dataset(dataset_type: str, use_real=None):
+    """Get dataset with caching. ECG use_real None = auto-detect MIT-BIH CSVs."""
     key = f"{dataset_type}_{use_real}"
     if key not in _cache:
         if dataset_type == 'ecg':
             _cache[key] = load_ecg_dataset(use_real=use_real)
         elif dataset_type == 'har':
-            _cache[key] = load_har_dataset(use_real=use_real)
+            _cache[key] = load_har_dataset(use_real=False if use_real is None else use_real)
         else:
             raise ValueError(f"Unknown dataset type: {dataset_type}")
     return _cache[key]

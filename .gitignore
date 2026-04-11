@@ -34,3 +34,7 @@ frontend/dist/
 # Logs
 *.log
 npm-debug.log*
+
+# Large local datasets (exceed GitHub single-file size limits)
+mitbih_train.csv
+mitbih_test.csv

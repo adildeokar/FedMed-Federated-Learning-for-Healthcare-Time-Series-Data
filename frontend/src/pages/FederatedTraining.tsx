@@ -6,8 +6,11 @@ import { ConfusionMatrix } from '../components/charts/ConfusionMatrix'
 import { ClientStatusGrid } from '../components/charts/ClientStatusGrid'
 import { MetricsPanel } from '../components/training/MetricsPanel'
 import { TrainingLog } from '../components/training/TrainingProgress'
+import { ThroughputLatencyChart } from '../components/charts/ThroughputLatencyChart'
+import { DataPartitionPanel } from '../components/charts/DataPartitionPanel'
 import { useTraining } from '../hooks/useTraining'
-import { Download, Shield, Clock, Wifi } from 'lucide-react'
+import { useTrainingStore } from '../store/trainingStore'
+import { Download, Shield } from 'lucide-react'
 import type { TrainingConfig as TConfig } from '../types/training'
 
 const ECG_CLASS_NAMES = ['Normal', 'Supraventricular', 'Ventricular', 'Fusion', 'Unknown']
@@ -20,6 +23,8 @@ export function FederatedTraining() {
     roundHistory, clientStates, activeClientId, config,
     federatedResults, progress
   } = useTraining()
+
+  const { throughputHistory, latencyHistory, partitionStats, partitionClasses } = useTrainingStore()
 
   const [activeTab, setActiveTab] = useState<'matrix' | 'convergence'>('convergence')
 
@@ -189,12 +194,12 @@ export function FederatedTraining() {
         </div>
       </div>
 
-      {/* Bottom: Charts */}
+      {/* Bottom: Convergence + Confusion Matrix */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         {/* Training curve */}
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 12, padding: '16px' }}>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12, fontFamily: 'Rajdhani', fontWeight: 600 }}>
-            CONVERGENCE — ACCURACY & LOSS PER ROUND
+            CONVERGENCE — ACCURACY &amp; LOSS PER ROUND
           </div>
           <TrainingCurve roundHistory={roundHistory} showRounds height={200} />
         </div>
@@ -218,6 +223,21 @@ export function FederatedTraining() {
             <TrainingCurve roundHistory={roundHistory} showRounds height={220} />
           )}
         </div>
+      </div>
+
+      {/* ── NEW: Throughput & Latency + Data Partition ─────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <ThroughputLatencyChart
+          throughputHistory={throughputHistory}
+          latencyHistory={latencyHistory}
+        />
+        <DataPartitionPanel
+          partitionStats={partitionStats}
+          partitionClasses={partitionClasses}
+          nClients={nClients}
+          iid={config?.iid ?? true}
+          datasetType={config?.dataset ?? 'ecg'}
+        />
       </div>
     </div>
   )
