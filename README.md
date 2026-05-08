@@ -10,7 +10,7 @@ FedMed is a full-stack research platform demonstrating federated learning applie
 ## Datasets
 - **ECG**: MIT-BIH Arrhythmia — 5-class (Normal, Supraventricular, Ventricular, Fusion, Unknown)  
 - **HAR**: UCI Human Activity Recognition — 6-class wearable sensor data  
-- Both datasets have **synthetic fallback generators** so the app works immediately in demo mode
+- Both datasets have **synthetic fallback generators** so the app works immediately in demo mode.
 
 ## Architecture
 ```
